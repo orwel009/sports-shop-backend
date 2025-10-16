@@ -16,8 +16,38 @@ router.post('/', adminAuth, async (req, res) => {
 
 router.get('/', async (req, res) => {
   try {
-    const products = await Product.find();
+    const { category, brand, minPrice, maxPrice } = req.query;
+
+    let filter = {};
+
+    if (category) filter.category = category;
+    if (brand) filter.brand = brand;
+    if (minPrice || maxPrice) {
+      filter.price = {};
+      if (minPrice) filter.price.$gte = Number(minPrice);
+      if (maxPrice) filter.price.$lte = Number(maxPrice);
+    }
+
+    const products = await Product.find(filter);
     res.json(products);
+  } catch (err) {
+    res.status(500).json({ msg: err.message });
+  }
+});
+
+router.get('/categories', async (req, res) => {
+  try {
+    const categories = await Product.distinct('category');
+    res.json(categories);
+  } catch (err) {
+    res.status(500).json({ msg: err.message });
+  }
+});
+
+router.get('/brands', async (req, res) => {
+  try {
+    const brands = await Product.distinct('brand');
+    res.json(brands);
   } catch (err) {
     res.status(500).json({ msg: err.message });
   }
