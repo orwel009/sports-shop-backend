@@ -35,6 +35,23 @@ router.get('/', async (req, res) => {
   }
 });
 
+router.get('/categories', async (req, res) => {
+  try {
+    const categories = await Product.distinct('category');
+    res.json(categories);
+  } catch (err) {
+    res.status(500).json({ msg: err.message });
+  }
+});
+
+router.get('/brands', async (req, res) => {
+  try {
+    const brands = await Product.distinct('brand');
+    res.json(brands);
+  } catch (err) {
+    res.status(500).json({ msg: err.message });
+  }
+});
 
 router.get('/:id', async (req, res) => {
   try {
