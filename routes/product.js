@@ -16,7 +16,7 @@ router.post('/', adminAuth, async (req, res) => {
 
 router.get('/', async (req, res) => {
   try {
-    const { category, brand, minPrice, maxPrice } = req.query;
+    const { category, brand, minPrice, maxPrice, search } = req.query;
 
     let filter = {};
 
@@ -28,12 +28,17 @@ router.get('/', async (req, res) => {
       if (maxPrice) filter.price.$lte = Number(maxPrice);
     }
 
+    if (search) {
+      filter.name = { $regex: search, $options: "i" };
+    }
+
     const products = await Product.find(filter);
     res.json(products);
   } catch (err) {
     res.status(500).json({ msg: err.message });
   }
 });
+
 
 router.get('/categories', async (req, res) => {
   try {
