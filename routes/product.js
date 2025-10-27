@@ -1,16 +1,52 @@
 const express = require('express');
 const Product = require('../models/Product');
 const adminAuth = require('../middleware/adminAuth');
+const cloudinary = require('../config/cloudinary');
+const streamifier = require('streamifier');
+
 
 const router = express.Router();
 
-router.post('/', adminAuth, async (req, res) => {
+const multer = require('multer');
+const storage = multer.memoryStorage();
+const parser = multer({ storage });
+
+router.post('/', adminAuth, parser.array('images', 5), async (req, res) => {
   try {
-    const product = new Product(req.body);
+    console.log('Product:', req.body);
+    console.log('Files:', req.files);
+
+    const uploadedUrls = [];
+
+    // Loop through each uploaded file
+    for (const file of req.files) {
+      const result = await new Promise((resolve, reject) => {
+        const stream = cloudinary.uploader.upload_stream(
+          { folder: 'sports-product-images' },
+          (error, result) => {
+            if (result) resolve(result);
+            else reject(error);
+          }
+        );
+
+        // Convert buffer → readable stream
+        streamifier.createReadStream(file.buffer).pipe(stream);
+      });
+
+      uploadedUrls.push(result.secure_url);
+    }
+
+    // Add uploaded image URLs to product data
+    const productData = { ...req.body, images: uploadedUrls };
+
+    // Save product in DB
+    const product = new Product(productData);
     await product.save();
-    res.status(201).json(product);
+
+    res.status(201).json({ success: true, product });
   } catch (err) {
-    res.status(400).json({ msg: err.message });
+    console.error('Upload error:', err);
+    res.status(500).json({ success: false, message: err.message });
   }
 });
 
@@ -19,7 +55,6 @@ router.get('/', async (req, res) => {
     const { category, brand, minPrice, maxPrice, search } = req.query;
 
     let filter = {};
-
     if (category) filter.category = category;
     if (brand) filter.brand = brand;
     if (minPrice || maxPrice) {
@@ -27,18 +62,14 @@ router.get('/', async (req, res) => {
       if (minPrice) filter.price.$gte = Number(minPrice);
       if (maxPrice) filter.price.$lte = Number(maxPrice);
     }
+    if (search) filter.name = { $regex: search, $options: 'i' };
 
-    if (search) {
-      filter.name = { $regex: search, $options: "i" };
-    }
-
-    const products = await Product.find(filter);
-    res.json(products);
+    const products = await Product.find(filter).sort({ createdAt: -1 });
+    res.json({ success: true, count: products.length, products });
   } catch (err) {
     res.status(500).json({ msg: err.message });
   }
 });
-
 
 router.get('/categories', async (req, res) => {
   try {
@@ -49,6 +80,9 @@ router.get('/categories', async (req, res) => {
   }
 });
 
+// ----------------------
+// GET DISTINCT BRANDS
+// ----------------------
 router.get('/brands', async (req, res) => {
   try {
     const brands = await Product.distinct('brand');
@@ -68,12 +102,46 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-router.put('/:id', adminAuth, async (req, res) => {
+router.put('/:id', adminAuth, parser.array('images', 5), async (req, res) => {
   try {
-    const updated = await Product.findByIdAndUpdate(req.params.id, req.body, { new: true });
-    res.json(updated);
+    const updatedData = req.body;
+    const uploadedUrls = [];
+
+    // If new images uploaded → upload to Cloudinary
+    if (req.files && req.files.length > 0) {
+      for (const file of req.files) {
+        const result = await new Promise((resolve, reject) => {
+          const stream = cloudinary.uploader.upload_stream(
+            { folder: 'sports-product-images' },
+            (error, result) => {
+              if (result) resolve(result);
+              else reject(error);
+            }
+          );
+          streamifier.createReadStream(file.buffer).pipe(stream);
+        });
+        uploadedUrls.push(result.secure_url);
+      }
+
+      // Replace images in updatedData
+      updatedData.images = uploadedUrls;
+    }
+
+    // Update product document
+    const updatedProduct = await Product.findByIdAndUpdate(
+      req.params.id,
+      updatedData,
+      { new: true }
+    );
+
+    if (!updatedProduct) {
+      return res.status(404).json({ success: false, message: 'Product not found' });
+    }
+
+    res.json({ success: true, product: updatedProduct });
   } catch (err) {
-    res.status(400).json({ msg: err.message });
+    console.error('❌ Update error:', err);
+    res.status(500).json({ success: false, message: err.message });
   }
 });
 
