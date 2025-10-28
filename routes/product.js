@@ -13,12 +13,9 @@ const parser = multer({ storage });
 
 router.post('/', adminAuth, parser.array('images', 5), async (req, res) => {
   try {
-    console.log('Product:', req.body);
-    console.log('Files:', req.files);
-
     const uploadedUrls = [];
 
-    // Loop through each uploaded file
+    // Upload files to Cloudinary
     for (const file of req.files) {
       const result = await new Promise((resolve, reject) => {
         const stream = cloudinary.uploader.upload_stream(
@@ -28,18 +25,19 @@ router.post('/', adminAuth, parser.array('images', 5), async (req, res) => {
             else reject(error);
           }
         );
-
-        // Convert buffer → readable stream
         streamifier.createReadStream(file.buffer).pipe(stream);
       });
 
       uploadedUrls.push(result.secure_url);
     }
 
-    // Add uploaded image URLs to product data
-    const productData = { ...req.body, images: uploadedUrls };
 
-    // Save product in DB
+    const productData = {
+      ...req.body,
+      isFeatured: req.body.isFeatured === 'true',
+      images: uploadedUrls,
+    };
+
     const product = new Product(productData);
     await product.save();
 
@@ -92,6 +90,16 @@ router.get('/brands', async (req, res) => {
   }
 });
 
+router.get('/featured', async (req, res) => {
+  try {
+    const products = await Product.find({ isFeatured: true }).sort({ createdAt: -1 });
+    res.json({ success: true, count: products.length, products });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+
 router.get('/:id', async (req, res) => {
   try {
     const product = await Product.findById(req.params.id);
@@ -104,10 +112,13 @@ router.get('/:id', async (req, res) => {
 
 router.put('/:id', adminAuth, parser.array('images', 5), async (req, res) => {
   try {
-    const updatedData = req.body;
+    const updatedData = {
+      ...req.body,
+      isFeatured: req.body.isFeatured === 'true',
+    };
+
     const uploadedUrls = [];
 
-    // If new images uploaded → upload to Cloudinary
     if (req.files && req.files.length > 0) {
       for (const file of req.files) {
         const result = await new Promise((resolve, reject) => {
@@ -120,14 +131,13 @@ router.put('/:id', adminAuth, parser.array('images', 5), async (req, res) => {
           );
           streamifier.createReadStream(file.buffer).pipe(stream);
         });
+
         uploadedUrls.push(result.secure_url);
       }
 
-      // Replace images in updatedData
       updatedData.images = uploadedUrls;
     }
 
-    // Update product document
     const updatedProduct = await Product.findByIdAndUpdate(
       req.params.id,
       updatedData,
@@ -140,7 +150,7 @@ router.put('/:id', adminAuth, parser.array('images', 5), async (req, res) => {
 
     res.json({ success: true, product: updatedProduct });
   } catch (err) {
-    console.error('❌ Update error:', err);
+    console.error('Update error:', err);
     res.status(500).json({ success: false, message: err.message });
   }
 });

@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const razorpay = require('../config/razorpay');
 const Order = require('../models/Order');
 const authMiddleware = require('../middleware/userAuth');
+const adminAuth = require('../middleware/adminAuth');
 
 //Create Razorpay Order
 router.post('/create-order', authMiddleware, async (req, res) => { 
@@ -119,6 +120,41 @@ router.get('/my-orders', authMiddleware, async (req, res) => {
     res.status(500).json({ msg: 'Error fetching orders' });
   }
 });
+
+
+// Get all orders (Admin only)
+router.get("/", adminAuth, async (req, res) => {
+  try {
+    const orders = await Order.find().populate("user", "name email");
+    res.json(orders);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Update order status
+router.put("/:id/status", adminAuth, async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.id);
+    if (!order) return res.status(404).json({ message: "Order not found" });
+
+    order.status = req.body.status;
+    await order.save();
+    res.json({ success: true, message: "Order status updated" });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+router.delete("/:id", adminAuth, async (req, res) => {
+  try {
+    await Order.findByIdAndDelete(req.params.id);
+    res.json({ success: true, message: "Order deleted" });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 
 
 module.exports = router;
